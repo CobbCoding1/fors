@@ -16,6 +16,9 @@ enum Tokens {
     SWAP,
     OVER,
     ROT,
+    DOTQUOTE,
+    QUOTE,
+    STRING(String),
     WORD(String),
     INT(i32),
 }
@@ -130,6 +133,12 @@ impl Interpreter {
                     Tokens::SWAP => self.swap(),
                     Tokens::OVER => self.over(),
                     Tokens::ROT => self.rot(),
+                    Tokens::DOTQUOTE => {
+                        let str: Vec<Tokens> = tokens.clone().into_iter().take_while(|v| *v != Tokens::QUOTE).collect();
+                        println!("{:?}", str);
+                    },
+                    Tokens::QUOTE => (),
+                    Tokens::STRING(str) => println!("{}", str),
                     Tokens::WORD(word) => {
                         match self.word_map.get(&word) {
                             Some(tokens) => self.interpret_tokens(tokens.clone()),
@@ -159,6 +168,8 @@ fn get_token_from_word(word: &str) -> Tokens {
         "swap" => return Tokens::SWAP,
         "over" => return Tokens::OVER,
         "rot" => return Tokens::ROT,
+        ".\"" => return Tokens::DOTQUOTE,
+        "\"" => return Tokens::QUOTE,
         _ => match word.parse::<i32>() {
             Ok(num) => return Tokens::INT(num),
             Err(_) => return Tokens::WORD(word.to_string()),
@@ -174,11 +185,23 @@ fn main() {
     }
     let mut lexer = Lexer::new();
     let raw = lexer.read_file(&args[1]);
-    let data = raw.split_whitespace();
+    let mut data: VecDeque<&str> = raw.split_whitespace().collect();
 
-    for word in data {
-        let token = get_token_from_word(word);
-        lexer.push(token);
+    while data.len() > 0 {
+        let mut word: String = Default::default();
+        match data.pop_front() {
+            Some(some_word) => {word = some_word.to_string();},
+            None => println!("asd"),
+        }
+        let token = get_token_from_word(&word);
+        match token {
+            Tokens::DOTQUOTE => {
+                let str: Vec<&str> = data.clone().into_iter().take_while(|&v| get_token_from_word(v) != Tokens::QUOTE).collect(); 
+                data = data.split_off(str.len());
+                lexer.push(Tokens::STRING(str.join(" ")));
+            },
+            _ => lexer.push(token),
+        }
     }
 
     let mut interpreter = Interpreter{
