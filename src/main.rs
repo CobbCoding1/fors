@@ -37,10 +37,14 @@ enum Tokens {
     QUESTION,
     BANG,
     BANGITER,
+    ALLOT,
+    CELLS,
     STRING(String),
     WORD(String),
     INT(i32),
 }
+
+const CELL_WIDTH: u8 = 1;
 
 #[derive(Clone)]
 struct Lexer {
@@ -125,6 +129,8 @@ fn get_token_from_word(word: &str) -> Tokens {
         "?" => return Tokens::QUESTION,
         "!" => return Tokens::BANG,
         "+!" => return Tokens::BANGITER,
+        "allot" => return Tokens::ALLOT,
+        "cells" => return Tokens::CELLS,
         _ => match word.parse::<i32>() {
             Ok(num) => return Tokens::INT(num),
             Err(_) => return Tokens::WORD(word.to_string()),
@@ -325,6 +331,16 @@ impl Interpreter {
                     Tokens::BANGITER => {
                         let a = self.pop();
                         self.memory_stack[a as usize] = self.memory_stack[a as usize] + 1;
+                    },
+                    Tokens::ALLOT => {
+                        let a = self.pop();
+                        for _ in 0..a {
+                            self.memory_stack.push(0);
+                        }
+                    },
+                    Tokens::CELLS => {
+                        let a = self.pop();
+                        self.push(a * CELL_WIDTH as i32);
                     },
                     Tokens::STRING(str) => print!("{}", str),
                     Tokens::WORD(word) => {
