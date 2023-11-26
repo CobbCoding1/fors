@@ -31,6 +31,11 @@ enum Tokens {
     DO,
     LOOP,
     I,
+    VARIABLE,
+    AT,
+    QUESTION,
+    BANG,
+    BANGITER,
     STRING(String),
     WORD(String),
     INT(i32),
@@ -49,6 +54,8 @@ struct Loop {
 struct Interpreter {
     stack: Vec<i32>,
     if_stack: Vec<bool>,
+    memory_stack: Vec<i32>,
+    memory_map: std::collections::HashMap<String, usize>,
     word_map: std::collections::HashMap<String, VecDeque<Tokens>>,
     in_word: bool,
     cur_loop: Loop,
@@ -110,6 +117,11 @@ fn get_token_from_word(word: &str) -> Tokens {
         "do" => return Tokens::DO,
         "loop" => return Tokens::LOOP,
         "i" => return Tokens::I,
+        "variable" => return Tokens::VARIABLE,
+        "@" => return Tokens::AT,
+        "?" => return Tokens::QUESTION,
+        "!" => return Tokens::BANG,
+        "+!" => return Tokens::BANGITER,
         _ => match word.parse::<i32>() {
             Ok(num) => return Tokens::INT(num),
             Err(_) => return Tokens::WORD(word.to_string()),
@@ -172,7 +184,7 @@ impl Interpreter {
                     Tokens::MUL => {binexpr!(self, *);},
                     Tokens::DIV => {binexpr!(self, /);},
                     Tokens::MOD => {binexpr!(self, %);},
-                    Tokens::DOT => println!("{}", self.pop()),
+                    Tokens::DOT => print!("{}", self.pop()),
                     Tokens::COLON => {
                         let word_token = tokens.pop_front();
                         let current_word: String;
@@ -185,6 +197,7 @@ impl Interpreter {
                         self.add_word(current_word, token_vec);
                     },
                     Tokens::SEMI => {
+                        self.in_word = false;
                     },
                     Tokens::EMIT => print!("{}", (self.pop() as u8) as char),
                     Tokens::CR => println!(""),
@@ -196,12 +209,12 @@ impl Interpreter {
                     Tokens::AND => {
                         let a = self.pop();
                         let b = self.pop();
-                        self.push((b & a) as i32 * -1);
+                        self.push((b & a) as i32);
                     },
                     Tokens::OR => {
                         let a = self.pop();
                         let b = self.pop();
-                        self.push((b | a) as i32 * -1);
+                        self.push((b | a) as i32);
                     },
                     Tokens::INVERT => {
                         let a = self.pop();
@@ -276,6 +289,32 @@ impl Interpreter {
                             panic!("error: i cannot be outside loop");
                         }
                     },
+                    Tokens::VARIABLE => {
+                        match tokens.pop_front() {
+                            Some(Tokens::WORD(name)) => {
+                                self.memory_map.insert(name, self.memory_stack.len());
+                                self.memory_stack.push(0);
+                            },
+                            _ => panic!("unexpected keyword"),
+                        }
+                    },
+                    Tokens::AT => {
+                        let a = self.pop();
+                        self.push(self.memory_stack[a as usize]);
+                    },
+                    Tokens::QUESTION => {
+                        let a = self.pop();
+                        print!("{}", self.memory_stack[a as usize]);
+                    },
+                    Tokens::BANG => {
+                        let a = self.pop();
+                        let b = self.pop();
+                        self.memory_stack[a as usize] = b;
+                    },
+                    Tokens::BANGITER => {
+                        let a = self.pop();
+                        self.memory_stack[a as usize] = self.memory_stack[a as usize] + 1;
+                    },
                     Tokens::STRING(str) => print!("{}", str),
                     Tokens::WORD(word) => {
                         match self.word_map.get(&word) {
@@ -283,14 +322,18 @@ impl Interpreter {
                                 self.in_word = true;
                                 self.interpret_tokens(tokens.clone());
                             },
-                            None => panic!("undefined word {}", &word),
+                            None => {
+                                match self.memory_map.get(&word) {
+                                    Some(index) => self.push(*index as i32),
+                                    None => panic!("undefined word {}", &word),
+                                }
+                            }
                         }
                     },
                     Tokens::INT(num) => self.push(num),
                 }
             };
         }
-        self.in_word = false;
     }
 }
 
@@ -323,8 +366,10 @@ fn main() {
     }
 
     let mut interpreter = Interpreter{
-        stack: vec![], 
+        stack: Vec::new(), 
         if_stack: Vec::new(), 
+        memory_stack: Vec::new(), 
+        memory_map: std::collections::HashMap::new(),
         word_map: std::collections::HashMap::new(),
         in_word: false,
         cur_loop: Loop{
