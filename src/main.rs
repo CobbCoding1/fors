@@ -32,6 +32,7 @@ enum Tokens {
     LOOP,
     I,
     VARIABLE,
+    CONSTANT,
     AT,
     QUESTION,
     BANG,
@@ -56,6 +57,7 @@ struct Interpreter {
     if_stack: Vec<bool>,
     memory_stack: Vec<i32>,
     memory_map: std::collections::HashMap<String, usize>,
+    constant_map: std::collections::HashMap<String, i32>,
     word_map: std::collections::HashMap<String, VecDeque<Tokens>>,
     in_word: bool,
     cur_loop: Loop,
@@ -118,6 +120,7 @@ fn get_token_from_word(word: &str) -> Tokens {
         "loop" => return Tokens::LOOP,
         "i" => return Tokens::I,
         "variable" => return Tokens::VARIABLE,
+        "constant" => return Tokens::CONSTANT,
         "@" => return Tokens::AT,
         "?" => return Tokens::QUESTION,
         "!" => return Tokens::BANG,
@@ -298,6 +301,14 @@ impl Interpreter {
                             _ => panic!("unexpected keyword"),
                         }
                     },
+                    Tokens::CONSTANT => {
+                        let a = tokens.pop_front().unwrap();
+                        let b = self.pop();
+                        match a {
+                            Tokens::WORD(name) => self.constant_map.insert(name, b),
+                            _ => panic!("error: unexpected keyword"),
+                        };
+                    },
                     Tokens::AT => {
                         let a = self.pop();
                         self.push(self.memory_stack[a as usize]);
@@ -325,7 +336,12 @@ impl Interpreter {
                             None => {
                                 match self.memory_map.get(&word) {
                                     Some(index) => self.push(*index as i32),
-                                    None => panic!("undefined word {}", &word),
+                                    None => {
+                                        match self.constant_map.get(&word) {
+                                            Some(value) => self.push(*value),
+                                            None => panic!("undefined word {}", &word),
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -370,6 +386,7 @@ fn main() {
         if_stack: Vec::new(), 
         memory_stack: Vec::new(), 
         memory_map: std::collections::HashMap::new(),
+        constant_map: std::collections::HashMap::new(),
         word_map: std::collections::HashMap::new(),
         in_word: false,
         cur_loop: Loop{

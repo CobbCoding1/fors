@@ -1,11 +1,3 @@
-variable balance
-variable two
-123 two !
-6 balance !
-balance +!
-two +!
-two +!
-two +!
-balance ? cr
-two ? cr
-
+20 constant answer
+answer . cr
+answer . cr
