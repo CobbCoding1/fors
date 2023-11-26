@@ -6,6 +6,7 @@ enum Tokens {
     MINUS,
     MUL,
     DIV,
+    MOD,
     DOT,
     COLON,
     SEMI,
@@ -16,8 +17,20 @@ enum Tokens {
     SWAP,
     OVER,
     ROT,
+    AND,
+    OR,
+    INVERT,
     DOTQUOTE,
     QUOTE,
+    LESS,
+    GREATER,
+    EQ,
+    IF,
+    ELSE,
+    THEN,
+    DO,
+    LOOP,
+    I,
     STRING(String),
     WORD(String),
     INT(i32),
@@ -28,9 +41,17 @@ struct Lexer {
     pub token_stack: VecDeque<Tokens>,
 } 
 
+struct Loop {
+    cur_iter: i32,
+    in_loop: bool,
+}
+
 struct Interpreter {
     stack: Vec<i32>,
+    if_stack: Vec<bool>,
     word_map: std::collections::HashMap<String, VecDeque<Tokens>>,
+    in_word: bool,
+    cur_loop: Loop,
 }
 
 impl Lexer {
@@ -55,6 +76,44 @@ macro_rules! binexpr {
         let a = $interpreter.pop();
         let b = $interpreter.pop();
         $interpreter.push(b $symbol a);
+    }
+}
+
+fn get_token_from_word(word: &str) -> Tokens {
+    match word {
+        "+" => return Tokens::PLUS,
+        "-" => return Tokens::MINUS,
+        "*" => return Tokens::MUL,
+        "/" => return Tokens::DIV,
+        "mod" => return Tokens::MOD,
+        "." => return Tokens::DOT,
+        ":" => return Tokens::COLON,
+        ";" => return Tokens::SEMI,
+        "emit" => return Tokens::EMIT,
+        "cr" => return Tokens::CR,
+        "drop" => return Tokens::DROP,
+        "dup" => return Tokens::DUP,
+        "swap" => return Tokens::SWAP,
+        "over" => return Tokens::OVER,
+        "rot" => return Tokens::ROT,
+        "and" => return Tokens::AND,
+        "or" => return Tokens::OR,
+        "invert" => return Tokens::INVERT,
+        ".\"" => return Tokens::DOTQUOTE,
+        "\"" => return Tokens::QUOTE,
+        "<" => return Tokens::LESS,
+        ">" => return Tokens::GREATER,
+        "=" => return Tokens::EQ,
+        "if" => return Tokens::IF,
+        "else" => return Tokens::ELSE,
+        "then" => return Tokens::THEN,
+        "do" => return Tokens::DO,
+        "loop" => return Tokens::LOOP,
+        "i" => return Tokens::I,
+        _ => match word.parse::<i32>() {
+            Ok(num) => return Tokens::INT(num),
+            Err(_) => return Tokens::WORD(word.to_string()),
+        }
     }
 }
 
@@ -112,6 +171,7 @@ impl Interpreter {
                     Tokens::MINUS => {binexpr!(self, -);},
                     Tokens::MUL => {binexpr!(self, *);},
                     Tokens::DIV => {binexpr!(self, /);},
+                    Tokens::MOD => {binexpr!(self, %);},
                     Tokens::DOT => println!("{}", self.pop()),
                     Tokens::COLON => {
                         let word_token = tokens.pop_front();
@@ -133,15 +193,96 @@ impl Interpreter {
                     Tokens::SWAP => self.swap(),
                     Tokens::OVER => self.over(),
                     Tokens::ROT => self.rot(),
+                    Tokens::AND => {
+                        let a = self.pop();
+                        let b = self.pop();
+                        self.push((b & a) as i32 * -1);
+                    },
+                    Tokens::OR => {
+                        let a = self.pop();
+                        let b = self.pop();
+                        self.push((b | a) as i32 * -1);
+                    },
+                    Tokens::INVERT => {
+                        let a = self.pop();
+                        self.push(-a - 1);
+                    },
                     Tokens::DOTQUOTE => {
                         let str: Vec<Tokens> = tokens.clone().into_iter().take_while(|v| *v != Tokens::QUOTE).collect();
                         println!("{:?}", str);
                     },
                     Tokens::QUOTE => (),
-                    Tokens::STRING(str) => println!("{}", str),
+                    Tokens::LESS => {
+                        let a = self.pop();
+                        let b = self.pop();
+                        self.push((b < a) as i32 * -1);
+                    },
+                    Tokens::GREATER => {
+                        let a = self.pop();
+                        let b = self.pop();
+                        self.push((b > a) as i32 * -1);
+                    },
+                    Tokens::EQ => {
+                        let a = self.pop();
+                        let b = self.pop();
+                        self.push((b == a) as i32 * -1);
+                    },
+                    Tokens::IF => {
+                        if !self.in_word {
+                            panic!("expected to be in word");
+                        }
+                        let a = self.pop();
+                        self.if_stack.push(a != 0);
+                        if a == 0 {
+                            let token_vec: VecDeque<Tokens> = tokens.clone().into_iter().take_while(|v| (*v != Tokens::THEN) && (*v != Tokens::ELSE)).collect();
+                            tokens = tokens.split_off(token_vec.len() + 1);
+                        } else {
+                            continue;
+                        }
+                    },
+                    Tokens::ELSE => {
+                        if !self.in_word {
+                            panic!("expected to be in word");
+                        }
+                        let a = self.if_stack.pop().unwrap();
+                        if a {
+                            let token_vec: VecDeque<Tokens> = tokens.clone().into_iter().take_while(|v| *v != Tokens::THEN).collect();
+                            tokens = tokens.split_off(token_vec.len() + 1);
+                        } else {
+                            continue;
+                        }
+                    },
+                    Tokens::THEN => {
+                    },
+                    Tokens::DO => {
+                        let a = self.pop();
+                        self.cur_loop.in_loop = true;
+                        self.cur_loop.cur_iter = a;
+                        let b = self.pop();
+                        let token_vec: VecDeque<Tokens> = tokens.clone().into_iter().take_while(|v| *v != Tokens::LOOP).collect();
+                        tokens = tokens.split_off(token_vec.len());
+                        while self.cur_loop.cur_iter < b {
+                            self.interpret_tokens(token_vec.clone());
+                            self.cur_loop.cur_iter += 1;
+                        }
+                    },
+                    Tokens::LOOP => {
+                        self.cur_loop.in_loop = false;
+                    },
+                    Tokens::I => {
+                        if self.cur_loop.in_loop {
+                            self.push(self.cur_loop.cur_iter); 
+                        } else {
+                            panic!("error: i cannot be outside loop");
+                        }
+                    },
+                    Tokens::STRING(str) => print!("{}", str),
                     Tokens::WORD(word) => {
                         match self.word_map.get(&word) {
-                            Some(tokens) => self.interpret_tokens(tokens.clone()),
+                            Some(tokens) => { 
+                                self.in_word = true;
+                                self.interpret_tokens(tokens.clone());
+                            },
                             None => panic!("undefined word {}", &word),
                         }
                     },
@@ -149,33 +290,10 @@ impl Interpreter {
                 }
             };
         }
+        self.in_word = false;
     }
 }
 
-fn get_token_from_word(word: &str) -> Tokens {
-    match word {
-        "+" => return Tokens::PLUS,
-        "-" => return Tokens::MINUS,
-        "*" => return Tokens::MUL,
-        "/" => return Tokens::DIV,
-        "." => return Tokens::DOT,
-        ":" => return Tokens::COLON,
-        ";" => return Tokens::SEMI,
-        "emit" => return Tokens::EMIT,
-        "cr" => return Tokens::CR,
-        "drop" => return Tokens::DROP,
-        "dup" => return Tokens::DUP,
-        "swap" => return Tokens::SWAP,
-        "over" => return Tokens::OVER,
-        "rot" => return Tokens::ROT,
-        ".\"" => return Tokens::DOTQUOTE,
-        "\"" => return Tokens::QUOTE,
-        _ => match word.parse::<i32>() {
-            Ok(num) => return Tokens::INT(num),
-            Err(_) => return Tokens::WORD(word.to_string()),
-        }
-    }
-}
 
 
 fn main() {
@@ -206,7 +324,13 @@ fn main() {
 
     let mut interpreter = Interpreter{
         stack: vec![], 
+        if_stack: Vec::new(), 
         word_map: std::collections::HashMap::new(),
+        in_word: false,
+        cur_loop: Loop{
+            cur_iter: 0,
+            in_loop: false,
+        }
     };
 
     interpreter.interpret_tokens(lexer.token_stack);
