@@ -30,6 +30,8 @@ enum Tokens {
     THEN,
     DO,
     LOOP,
+    BEGIN,
+    UNTIL,
     I,
     VARIABLE,
     CONSTANT,
@@ -39,6 +41,7 @@ enum Tokens {
     BANGITER,
     ALLOT,
     CELLS,
+    KEY,
     STRING(String),
     WORD(String),
     INT(i32),
@@ -65,6 +68,7 @@ struct Interpreter {
     word_map: std::collections::HashMap<String, VecDeque<Tokens>>,
     in_word: bool,
     cur_loop: Loop,
+    loop_tokens: VecDeque<Tokens>,
 }
 
 impl Lexer {
@@ -122,6 +126,8 @@ fn get_token_from_word(word: &str) -> Tokens {
         "then" => return Tokens::THEN,
         "do" => return Tokens::DO,
         "loop" => return Tokens::LOOP,
+        "begin" => return Tokens::BEGIN,
+        "until" => return Tokens::UNTIL,
         "i" => return Tokens::I,
         "variable" => return Tokens::VARIABLE,
         "constant" => return Tokens::CONSTANT,
@@ -131,6 +137,7 @@ fn get_token_from_word(word: &str) -> Tokens {
         "+!" => return Tokens::BANGITER,
         "allot" => return Tokens::ALLOT,
         "cells" => return Tokens::CELLS,
+        "key" => return Tokens::KEY,
         _ => match word.parse::<i32>() {
             Ok(num) => return Tokens::INT(num),
             Err(_) => return Tokens::WORD(word.to_string()),
@@ -291,6 +298,16 @@ impl Interpreter {
                     Tokens::LOOP => {
                         self.cur_loop.in_loop = false;
                     },
+                    Tokens::BEGIN => {
+                        self.loop_tokens = tokens.clone().into_iter().take_while(|v| *v != Tokens::UNTIL).collect();
+                        self.loop_tokens.push_back(Tokens::UNTIL);
+                    },
+                    Tokens::UNTIL => {
+                        let a = self.pop();
+                        if a == 0 {
+                            self.interpret_tokens(self.loop_tokens.clone())
+                        }
+                    },
                     Tokens::I => {
                         if self.cur_loop.in_loop {
                             self.push(self.cur_loop.cur_iter); 
@@ -341,6 +358,12 @@ impl Interpreter {
                     Tokens::CELLS => {
                         let a = self.pop();
                         self.push(a * CELL_WIDTH as i32);
+                    },
+                    Tokens::KEY => {
+                        let mut input = String::new();
+                        std::io::stdin().read_line(&mut input).expect("could not read line");
+                        let key = input.as_bytes()[0] as i32;
+                        self.push(key);
                     },
                     Tokens::STRING(str) => print!("{}", str),
                     Tokens::WORD(word) => {
@@ -408,7 +431,8 @@ fn main() {
         cur_loop: Loop{
             cur_iter: 0,
             in_loop: false,
-        }
+        },
+        loop_tokens: VecDeque::new(),
     };
 
     interpreter.interpret_tokens(lexer.token_stack);
