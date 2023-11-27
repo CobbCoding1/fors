@@ -33,7 +33,7 @@ Valid symbols: + - * / mod
 ### Words
 Words are like functions in any other language
 ```Forth
-: name 1 2 + ; ( define a function, starting at : until ; )
+: name 1 2 + ; ( define a word, starting at : until ; )
 name ( call it with its name )
 ```
 
